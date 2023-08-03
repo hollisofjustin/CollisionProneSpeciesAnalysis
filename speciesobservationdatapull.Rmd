@@ -1,0 +1,119 @@
+---
+title: "Whooping Crane Observation"
+author: "Justin Hollis"
+date: "2023-08-03"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, eval = FALSE}
+# Set up script
+# function to check for package installation, then install and load libraries
+packageLoad <-
+  function(x) {
+    for (i in 1:length(x)) {
+      if (!x[i] %in% installed.packages()) {
+        install.packages(x[i])
+      }
+      library(x[i], character.only = TRUE)
+    }
+  }
+
+
+# vector of packages to load
+packages <- c('tidyverse',
+              'palmerpenguins',
+              'sf',
+              'terra',
+              'tmap',
+              'rmarkdown',
+              'tigris',
+              'elevatr',
+              'rgdal',
+              'rgbif',
+              'soilDB',
+              'plotly',
+              'dataRetrieval',
+              'nhdplusTools')
+
+packageLoad(packages)
+tmap_mode("view")
+
+```
+
+```{r, eval = FALSE}
+states <- tigris::states()
+tx <- states %>% 
+  filter(NAME == 'Texas')
+counties <- tigris::counties(state= "TX")
+```
+
+
+```{r, eval = FALSE}
+#make a string of species names to use in the 'occ_data' function
+species <- c("Grus americana", "Egretta rufescens", "Plegadis chihi","Mycteria americana")  
+
+#also make a string of common names
+common_name <- c("Whooping Crane", "Reddish Egret", "White-faced Ibis","Wood Stork")
+```
+
+```{r, eval = FALSE}
+emptylist <- vector("list", length = length(species))
+commonemplist <- vector("list", length = length(common_name))
+```
+
+
+
+```{r}
+
+#funtion for pulling whooping crane data
+crawl <- function(year){
+  for (i in 1:length(species)) { #this function can pull data for multiple species 
+    occ <- occ_data( #parameters outlined by the package to pull species specific data
+      scientificName = species[[i]],
+      hasCoordinate = TRUE, #spatial coordinates are an important feature for the observations
+      geometry = st_bbox(tx), #identifying the AOI to get observation within texas
+      year = year,
+    ) %>%
+    .$data # 
+  
+  # add species name column as ID to use later
+  occ$ID <- common_name [[i]]
+  
+  #clean by removing duplicate occurrences
+  emptylist[[i]] <-
+    occ %>% distinct(decimalLatitude, decimalLongitude, .keep_all = TRUE) %>%
+    dplyr::select(Species = ID,
+                  decimalLatitude,
+                  decimalLongitude,
+                  year,
+                  month,
+                  basisOfRecord) #grabbing geographic coordinates, year, month, and the type of record. For this data set, all are "Human Observations" 
+  }
+  whoop <- bind_rows(emptylist)
+}
+
+
+years <- c(2013:2023) #assigning the years to pull data from 
+whoop <- map_dfr(years, crawl) #using our function and inputting years to pull whooping crane data
+
+# Giving each observation a unique ID 
+whoopunique <- rowid_to_column(whoop) %>% 
+  st_as_sf(coords = c(x ="decimalLongitude", y ="decimalLatitude"), crs = 4269)
+```
+
+
+
+```{r}
+write.csv(whoop,"CPBobs.csv")
+```
+
+  
